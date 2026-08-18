@@ -1,6 +1,6 @@
 {
   "name": "dsh-client-ui-model-switcher",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "One-click provider/model switcher for the DeepSeek Harness web GUI: a session-header action that lists every configured provider and its models and switches the session in a single click.",
   "keywords": [
     "dsh",

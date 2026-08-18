@@ -36,7 +36,7 @@ pnpm --dir "$HOME\.dsh\profiles\web" add github:2275803244-cpu/dsh-model-switche
 
 重启 `dsh web`，会话标题栏出现滑块按钮。
 
-> 服务商目录来自 设置 → 模型 里已配置的适配器；要增加新服务商（如本地 Ollama），先在模型设置中配置好，一键切换里就会出现。
+> 服务商目录来自 设置 → 模型 里已配置的适配器。**一键内置多服务商**：把 `docs/llm-pi-ai.example.yaml` 的 `llm-pi-ai` 段拷进 `$DSH_HOME/settings.yaml`（热重载，无需重启），OpenAI / Anthropic / Gemini / Groq / xAI / OpenRouter / Mistral / Ollama 即全部出现在切换面板；有 API key 的立刻可用，没 key 的补 key（同名环境变量或 Models 页面）后自动亮起。
 
 ## 卸载
 

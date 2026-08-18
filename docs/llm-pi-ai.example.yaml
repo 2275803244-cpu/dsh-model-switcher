@@ -1,0 +1,40 @@
+# llm-pi-ai providers 示例配置 — 拷贝到 $DSH_HOME/settings.yaml 的 llm-pi-ai 段即可（热重载，无需重启）
+#
+# 每个 provider 的 apiKeyEnv 指向凭据名：同名环境变量，或在「设置 → 模型」
+# 里通过凭据服务保存（写入 $DSH_HOME/.credentials.yaml）。
+# 有 key 的服务商即刻可用；没 key 的显示加载失败，补 key 后自动亮起。
+llm-pi-ai:
+  providers:
+    openai:
+      apiKeyEnv: OPENAI_API_KEY
+      displayName: OpenAI
+    anthropic:
+      apiKeyEnv: ANTHROPIC_API_KEY
+      displayName: Anthropic
+    google:
+      apiKeyEnv: GEMINI_API_KEY
+      displayName: Google Gemini
+    groq:
+      apiKeyEnv: GROQ_API_KEY
+      displayName: Groq
+    xai:
+      apiKeyEnv: XAI_API_KEY
+      displayName: xAI Grok
+    openrouter:
+      apiKeyEnv: OPENROUTER_API_KEY
+      displayName: OpenRouter
+    mistral:
+      apiKeyEnv: MISTRAL_API_KEY
+      displayName: Mistral
+    # 本地模型（无需 key，装好 Ollama 即可用；模型列表按需增删）
+    ollama:
+      displayName: Ollama Local
+      api: openai-completions
+      baseURL: http://localhost:11434/v1
+      models:
+        - id: llama3.1:8b
+          name: Llama 3.1 8B
+        - id: qwen2.5:7b
+          name: Qwen 2.5 7B
+        - id: deepseek-r1:8b
+          name: DeepSeek R1 8B

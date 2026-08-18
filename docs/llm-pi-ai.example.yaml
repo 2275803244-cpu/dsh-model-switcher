@@ -26,6 +26,25 @@ llm-pi-ai:
     mistral:
       apiKeyEnv: MISTRAL_API_KEY
       displayName: Mistral
+    # 硅基流动（SiliconFlow）：国内 OpenAI 兼容平台，模型 id 用 组织/模型 格式
+    siliconflow:
+      apiKeyEnv: SILICONFLOW_API_KEY
+      displayName: 硅基流动
+      api: openai-completions
+      baseURL: https://api.siliconflow.cn/v1
+      models:
+        - id: deepseek-ai/DeepSeek-V3
+          name: DeepSeek-V3
+        - id: deepseek-ai/DeepSeek-R1
+          name: DeepSeek-R1
+        - id: deepseek-ai/DeepSeek-V2.5
+          name: DeepSeek-V2.5
+        - id: Qwen/Qwen2.5-72B-Instruct
+          name: Qwen2.5-72B
+        - id: Qwen/Qwen2.5-7B-Instruct
+          name: Qwen2.5-7B
+        - id: THUDM/GLM-4-9B-0414
+          name: GLM-4-9B
     # 本地模型（无需 key，装好 Ollama 即可用；模型列表按需增删）
     ollama:
       displayName: Ollama Local

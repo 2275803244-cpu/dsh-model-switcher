@@ -1,0 +1,39 @@
+{
+  "name": "dsh-client-ui-model-switcher",
+  "version": "0.1.0",
+  "description": "One-click provider/model switcher for the DeepSeek Harness web GUI: a session-header action that lists every configured provider and its models and switches the session in a single click.",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "client-plugin",
+    "web",
+    "model",
+    "provider",
+    "switcher"
+  ],
+  "author": "2275803244-cpu <2275803244@qq.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/2275803244-cpu/dsh-model-switcher.git"
+  },
+  "homepage": "https://github.com/2275803244-cpu/dsh-model-switcher",
+  "bugs": {
+    "url": "https://github.com/2275803244-cpu/dsh-model-switcher/issues"
+  },
+  "type": "module",
+  "main": "./lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib"
+  ],
+  "dsh": {
+    "client": {
+      "platform": "web"
+    }
+  }
+}

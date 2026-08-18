@@ -6,7 +6,7 @@ DeepSeek Harness Web GUI 的**一键服务商/模型切换**客户端插件。
 
 ## 功能
 
-- **一键切换**：每个服务商分组下列出全部模型，点模型行即提交完整 provider+model 选择
+- **一键切换（平铺）**：所有服务商的所有模型平铺在一个列表里，每行带服务商标签，**点模型直接切换，服务商（及其地址）自动跟随**——不用先选服务商
 - **当前状态**：面板顶部显示当前服务商 / 模型，当前项带蓝色高亮和 ✓
 - **实时目录**：打开时自动刷新模型目录（与 `/model` 命令、composer 模型席位共享同一份状态，任一入口切换其它入口同步）
 - **异常提示**：服务商不可用、目录加载失败、失败的服务商列表都会显示
@@ -36,7 +36,7 @@ pnpm --dir "$HOME\.dsh\profiles\web" add github:2275803244-cpu/dsh-model-switche
 
 重启 `dsh web`，会话标题栏出现滑块按钮。
 
-> 服务商目录来自 设置 → 模型 里已配置的适配器。**一键内置多服务商**：把 `docs/llm-pi-ai.example.yaml` 的 `llm-pi-ai` 段拷进 `$DSH_HOME/settings.yaml`（热重载，无需重启），OpenAI / Anthropic / Gemini / Groq / xAI / OpenRouter / Mistral / Ollama 即全部出现在切换面板；有 API key 的立刻可用，没 key 的补 key（同名环境变量或 Models 页面）后自动亮起。
+> 服务商目录来自 设置 → 模型 里已配置的适配器；要增加新服务商（如本地 Ollama），先在模型设置中配置好，一键切换里就会出现。
 
 ## 卸载
 

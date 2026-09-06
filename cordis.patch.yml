@@ -1,0 +1,5 @@
+# dsh-client-ui-model-switcher profile bundle patch:
+# inserts the plugin row into the loader tree when installed as a profile bundle.
+- insert:
+    - id: ui-model-switcher
+      name: 'dsh-client-ui-model-switcher'

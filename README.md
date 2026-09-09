@@ -67,6 +67,13 @@ pnpm --dir "$HOME\.dsh\profiles\web" remove dsh-client-ui-model-switcher
 # 删掉 cordis.patch.yml 的 ui-model-switcher 行，重启
 ```
 
+## 贡献
+
+欢迎提交 PR！请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+- 跑测试：`node test/client.test.cjs`（提交前必须全绿）
+- 提交信息遵循 [Conventional Commits](https://www.conventionalcommits.org/)
+
 ## 参考
 
 - `ModelDirectory` / `ModelDirectoryResolver`：`dsh-client-ui-model-selection/lib/types/client/service.d.ts`、`directory.d.ts`

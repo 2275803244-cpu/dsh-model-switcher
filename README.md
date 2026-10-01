@@ -23,6 +23,23 @@ DeepSeek Harness Web GUI 的**一键服务商/模型切换**客户端插件。
 
 ## 安装
 
+本插件同时支持 **CLI / Web 版**（`web` profile）与 **桌面版**（`desktop` profile）。
+
+推荐用 DSH 自带 CLI 安装：`dsh plugin add` 会把依赖**和** `dsh.profile.bundles` 一起写进该 profile 的 `package.json`，**不需要**再手工改 `cordis.patch.yml`。
+
+```powershell
+# CLI / Web 版
+dsh plugin --profile web add github:2275803244-cpu/dsh-model-switcher
+
+# 桌面版（桌面应用自带 CLI，位于 <安装目录>\resources\runtime\cli\bin\dsh.cmd）
+& "<桌面版安装目录>\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add github:2275803244-cpu/dsh-model-switcher
+```
+
+装完重启对应程序，会话标题栏出现滑块按钮。
+
+<details>
+<summary>手工安装（旧方式，仅 web profile）</summary>
+
 ```powershell
 pnpm --dir "$HOME\.dsh\profiles\web" add github:2275803244-cpu/dsh-model-switcher
 ```
@@ -35,9 +52,25 @@ pnpm --dir "$HOME\.dsh\profiles\web" add github:2275803244-cpu/dsh-model-switche
       name: 'dsh-client-ui-model-switcher'
 ```
 
-重启 `dsh web`，会话标题栏出现滑块按钮。
+重启 `dsh web`。
+
+</details>
 
 > 服务商目录来自 设置 → 模型 里已配置的适配器；要增加新服务商（如本地 Ollama），先在模型设置中配置好，一键切换里就会出现。
+
+## 0.8.2 更新（桌面版支持）
+
+DSH 桌面版（`@deepseek-ai/dsh-desktop-runtime` **0.2.0-rc.2**）启用了独立的 `desktop` profile，插件默认不在其中。本版本确认插件在桌面版下**无需改动代码**即可工作（纯浏览器侧 bundle，只依赖 `react` / `react/jsx-runtime`，不耦合 DSH 内部包）：
+
+| 核对项 | 桌面版 0.2.0-rc.2 实测结果 |
+| --- | --- |
+| 槽位 `conversation.session.header.actions` | ✅ 仍由 `dsh-client-ui-conversation` 渲染 |
+| 槽位 `conversation.input.right` | ✅ 仍存在 |
+| 服务 `modelDirectories` / `slots` / `sessions` / `remote` / `connection` | ✅ 均在 |
+| `modelDirectories.select({ provider, model })` | ✅ 签名一致（`async select(selection)`） |
+| 组合树 | ✅ 装入 `desktop` profile 后可见 `ui-model-switcher` 行，无报错 |
+
+> 校验方式：桌面版核心代码打包在 `app.asar` 内，直接解包比对运行时实际代码；`desktop` profile 只能由桌面应用启动，组合树校验用一份副本 profile 跑 `--dump-config`。
 
 ## 0.8.1 修复（本地补丁）
 

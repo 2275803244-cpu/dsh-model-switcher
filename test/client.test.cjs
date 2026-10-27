@@ -91,6 +91,33 @@ function createReactShim() {
     Fragment: Symbol.for('react.fragment')
   };
 
+  /**
+   * Turn a JSX element tree into the fully-resolved output: descend through
+   * nested function components (invoking them) and host/Fragment elements, so
+   * collect/textOf/panelOf see the real rendered DOM-ish structure. Hook calls
+   * use the single shared `hooks`/`cursor` pair: functions are invoked in a
+   * stable per-render order, so each call site reliably gets its own indices.
+   */
+  function resolveEl(el) {
+    if (el === null || typeof el !== 'object') return el;
+    if (Array.isArray(el)) return el.map(resolveEl);
+    const type = el.type;
+    if (typeof type === 'function') {
+      // Function component: invoke it (this advances cursor past its hooks),
+      // then resolve whatever it returned.
+      return resolveEl(type(el.props));
+    }
+    if (typeof type === 'string') {
+      // Host element: resolve children in place.
+      if (el.props && el.props.children !== undefined) {
+        return { type, props: { ...el.props, children: resolveEl(el.props.children) } };
+      }
+      return el;
+    }
+    // Fragment or exotic type: unwrap its children.
+    return el.props && el.props.children !== undefined ? resolveEl(el.props.children) : el;
+  }
+
   return {
     React,
     jsxRuntime,
@@ -108,7 +135,7 @@ function createReactShim() {
         cursor = 0;
         pendingEffects.length = 0;
         rerender = run;
-        current = Component(props);
+        current = resolveEl({ type: Component, props });
         // Flush effects produced by this render pass (state updates re-render).
         let guard = 0;
         while (pendingEffects.length > 0 && guard < 20) {
@@ -276,6 +303,12 @@ function remoteStub() {
           { provider: 'groq', displayName: 'Groq', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'groq'] },
           { provider: 'ollama', displayName: 'Ollama Local', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'ollama'] }
         ] });
+      },
+      discoverModels: (opts) => {
+        calls.push(['llm.discoverModels', opts]);
+        return Promise.resolve({ ok: true, value: { models: [
+          { id: 'resolved-model', name: 'Resolved Model' }
+        ] } });
       }
     },
     settings: {
@@ -289,6 +322,10 @@ function remoteStub() {
             ollama: { baseURL: 'http://localhost:11434/v1' }
           } } }
         ] } });
+      },
+      mutate: (req) => {
+        calls.push(['settings.mutate', req]);
+        return Promise.resolve({ ok: true });
       }
     },
     credentials: {
@@ -300,6 +337,10 @@ function remoteStub() {
           ANTHROPIC_API_KEY: { configured: false, writable: true },
           GROQ_API_KEY: { configured: true, writable: true }
         } });
+      },
+      set: (req) => {
+        calls.push(['credentials.set', req]);
+        return Promise.resolve({ ok: true, value: {} });
       }
     }
   };
@@ -510,6 +551,119 @@ async function main() {
     click(collect(element(), 'button')[0]); // reopen
     await shim.settle();
     assert.match(textOf(panelOf(element)), /Anthropic/, 'provider appears after its key is added');
+  }));
+
+  tests.push(test('web-search toggle cycles and persists its pref via settings.mutate', async () => {
+    const shim = createReactShim();
+    const api = remoteStub();
+    const state = sessionState({ provider: 'deepseek-official', model: 'deepseek-v4-pro' });
+    const slot = slotOf(shim, api, state, 'conversation.session.header.actions');
+    const element = shim.render(slot.Component, slot.options.inject('session-1'));
+    click(collect(element(), 'button')[0]); // open the header panel
+    await shim.settle();
+    let panel = panelOf(element);
+    const badge = collect(panel, 'button').find((node) => hasClass(node, '_ms_searchBadge'));
+    assert.ok(badge, 'search toggle badge present in the panel footer');
+    assert.match(textOf(badge), /未联网/, 'starts off when no stored pref');
+    assert.strictEqual(badge.props['aria-pressed'], false, 'off badge not pressed');
+    // cycle on → follow → off; each step must write only-add into the plugin ns.
+    const onWrites = () => api.calls.filter((c) => c[0] === 'settings.mutate');
+    click(badge);
+    await shim.settle();
+    panel = panelOf(element);
+    let b = collect(panel, 'button').find((node) => hasClass(node, '_ms_searchBadge'));
+    assert.match(textOf(b), /联网(?!未)/, 'badge now shows on');
+    assert.strictEqual(b.props['aria-pressed'], true, 'on badge pressed');
+    click(b);
+    await shim.settle();
+    panel = panelOf(element);
+    b = collect(panel, 'button').find((node) => hasClass(node, '_ms_searchBadge'));
+    assert.match(textOf(b), /沿用上次/, 'badge shows follow');
+    click(b);
+    await shim.settle();
+    panel = panelOf(element);
+    b = collect(panel, 'button').find((node) => hasClass(node, '_ms_searchBadge'));
+    assert.match(textOf(b), /未联网/, 'badge wraps back to off');
+    const writes = onWrites().map((c) => c[1]);
+    assert.ok(writes.length >= 1, 'toggle persisted through settings.mutate');
+    for (const w of writes) {
+      assert.strictEqual(w.ns, 'dsh-client-ui-model-switcher', 'search pref ns is plugin-local');
+      assert.strictEqual(w.ops.length, 1, 'single only-add op');
+      assert.strictEqual(w.ops[0].op, 'set', 'path-level set');
+      assert.deepStrictEqual([...w.ops[0].path], ['searchPref'], 'writes under searchPref');
+      assert.ok(['on', 'follow', 'off'].includes(w.ops[0].value), 'a valid search mode value');
+    }
+    // every transition produced exactly one write in stable order on/follow/off.
+    const values = writes.map((w) => w.ops[0].value);
+    assert.deepStrictEqual(values, ['on', 'follow', 'off'], 'cycles on→follow→off');
+  }));
+
+  tests.push(test('manage panel writes a provider preset via settings.mutate only-add', async () => {
+    const shim = createReactShim();
+    const api = remoteStub();
+    const state = sessionState({ provider: 'deepseek-official', model: 'deepseek-v4-pro' });
+    const slot = slotOf(shim, api, state, 'conversation.session.header.actions');
+    const element = shim.render(slot.Component, slot.options.inject('session-1'));
+    click(collect(element(), 'button')[0]);
+    await shim.settle();
+    let panel = panelOf(element);
+    assert.match(textOf(panel), /自定义接口预设/, 'manage button present in panel footer');
+    // open the manage sub-panel and fill the form.
+    const manageBtn = collect(panel, 'button').find((b) => /自定义接口预设/.test(textOf(b)));
+    assert.ok(manageBtn, 'manage button found');
+    click(manageBtn);
+    await shim.settle();
+    panel = panelOf(element);
+    assert.strictEqual(
+      collect(panelOf(element), 'button').find((b) => /自定义接口预设/.test(textOf(b))).props['aria-expanded'],
+      true,
+      'manage panel toggles open'
+    );
+    let panelText = textOf(panel);
+    assert.match(panelText, /服务商名称/, 'manage form fields render');
+    assert.match(panelText, /接口地址 baseURL/, 'manage form asks for baseURL');
+    assert.match(panelText, /默认模型 ID/, 'manage form asks for a model id');
+    // submit the form: must hit only-add settings.mutate with providers.<slug>.
+    let input = collect(panel, 'input');
+    input[0].props.onChange({ target: { value: '我的中转' } });
+    input[1].props.onChange({ target: { value: 'https://api.example.com/v1' } });
+    input[2].props.onChange({ target: { value: 'MY_PROVIDER_API_KEY' } });
+    input[3].props.onChange({ target: { value: 'sk-abc123' } });
+    input[4].props.onChange({ target: { value: 'gpt-4o' } });
+    await shim.settle();
+    panel = panelOf(element);
+    let submitBtn = collect(panel, 'button').find((b) => textOf(b).includes('下一步：确认'));
+    assert.ok(submitBtn, 'confirm step button present');
+    click(submitBtn);
+    await shim.settle();
+    // now on confirm phase.
+    panel = panelOf(element);
+    let confirmBtn = collect(panel, 'button').find((b) => textOf(b).includes('确认写入'));
+    assert.ok(confirmBtn, 'confirm write button present');
+    click(confirmBtn);
+    await shim.settle();
+    const mutates = api.calls.filter((c) => c[0] === 'settings.mutate');
+    assert.strictEqual(mutates.length, 2, 'preset write + discover re-write each mutate once');
+    const writes = mutates.map((c) => c[1]);
+    // only-add: single op, set under providers.<slug> on ns llm-pi-ai.
+    for (const w of writes) {
+      assert.strictEqual(w.ns, 'llm-pi-ai', 'preset writes to llm-pi-ai ns');
+      assert.strictEqual(w.ops.length, 1, 'each write is a single op (only-add)');
+      assert.ok(w.ops[0].op === 'set', 'uses path-level set');
+      assert.deepStrictEqual([...w.ops[0].path.slice(0, 1)], ['providers'], 'adds under providers.*');
+    }
+    // credential set recorded.
+    const sets = api.calls.filter((c) => c[0] === 'credentials.set');
+    assert.strictEqual(sets.length, 1, 'writes the api key once');
+    assert.strictEqual(sets[0][1].ref, 'MY_PROVIDER_API_KEY', 'credential ref is the chosen env name');
+    assert.strictEqual(sets[0][1].value, 'sk-abc123', 'credential value stored');
+    // discover probe ran with the baseURL.
+    const disc = api.calls.filter((c) => c[0] === 'llm.discoverModels');
+    assert.strictEqual(disc.length, 1, 'discoverModels probed once');
+    assert.strictEqual(disc[0][1].baseURL, 'https://api.example.com/v1', 'probe hits the typed baseURL');
+    // done state appears.
+    const donePanel = panelOf(element);
+    assert.match(textOf(donePanel), /已写入全局配置/, 'success message after write');
   }));
 
   await Promise.all(tests);

@@ -12,6 +12,8 @@ DeepSeek Harness Web GUI 的**一键服务商/模型切换**客户端插件。
 - **实时目录**：打开时自动刷新模型目录（与 `/model` 命令、composer 模型席位共享同一份状态，任一入口切换其它入口同步）
 - **异常提示**：服务商不可用、目录加载失败、失败的服务商列表都会显示
 - **会话限制**：子代理会话（不支持切换模型的）会禁用并提示
+- **联网搜索切换**：面板底部提供「🔍 联网」切换 chip，在 **on / 沿用上次 / 未联网** 三态间循环，点按即写回插件本地设置（host 只暴露全局 searchProvider，无逐会话开关，因此这是一个插件本地已知限制的偏好，详见 README「0.8.3 更新」）
+- **面板内供应商/模型管理**：面板底部「＋ 自定义接口预设」可**在面板内直接新增** OpenAI 兼容供应商（名称 / baseURL / 默认模型 / API key 环境变量 + 值），确认后只追加写入 `settings.mutate` 与 `credentials.set`，不覆盖已配置项
 
 ## 实现要点
 
@@ -58,6 +60,19 @@ pnpm --dir "$HOME\.dsh\profiles\web" add github:2275803244-cpu/dsh-model-switche
 
 > 服务商目录来自 设置 → 模型 里已配置的适配器；要增加新服务商（如本地 Ollama），先在模型设置中配置好，一键切换里就会出现。
 
+## 0.8.3 更新（联网搜索切换 + 面板内管理 + 兼容适配）
+
+本版本在 0.8.2 的桌面版兼容基础上，补齐了四项能力，每项均由 `test/client.test.cjs` 覆盖：
+
+| 能力 | 说明 | 验证 |
+| - | ---- | ---- |
+| **① 联网搜索（web search）切换** | 会话面板底部新增「🔍 联网」chip，三态循环：`on`（联网）→ `follow`（沿用上次）→ `off`（未联网）。当前 web search 选择（`searchPref`）通过 `api.settings.mutate({ ns: 'dsh-client-ui-model-switcher', ops: [{ op: 'set', path: ['searchPref'], value }] })` 只追加写回插件本地命名空间；浏览器内用 `localStorage` 立即生效。**已知限制**：host（`@deepseek-ai/dsh-web` 的 `ctx.web`）只有一个执行期全局选定的 `searchProvider`（`config.searchProvider` / 环境变量 `DSH_WEB_SEARCH_PROVIDER`），没有逐会话/逐对话的开启契约，所以这是一个**插件本地偏好**，并不会真正打开/关闭 host 的搜索 —— 只记忆并持久化你的选择 | 新增测试验证三态循环与 `settings.mutate` 写回 |
+| **② UI/交互改造** | 面板底部独立工具条：左侧「🔍 联网」chip 实时显示当前搜索偏好状态（`aria-pressed` 标记），右侧「＋ 自定义接口预设」管理按钮；chip 点击即时三态切换、无刷新 | `_ms_searchBadge` / `_ms_footer` / `_ms_manageBtn` 样式与 `aria-pressed` 断言 |
+| **③ 面板内供应商/模型管理** | 不离开会话面板就能新增 OpenAI 兼容供应商：`UrlPresetForm` 收集 名称 / baseURL / 默认模型 / key 环境变量与值，走「下一步：确认 → 确认写入」两段式；只追加写入 `settings.mutate`（`providers.<slug>`）与 `credentials.set`，并用 `llm.discoverModels` 探测可用性 | 测试断言只写一次、单 op、`llm-pi-ai` 命名空间、key 只 `set` 一次 |
+| **④ web + desktop 兼容** | 纯浏览器侧 bundle，只依赖 `react` / `react/jsx-runtime`，不耦合 DSH 内部包，`dsh.client.platform: "web"`；`web` 与 `desktop` profile 均可用 | 0.8.2 实测表格（见下）不变，本版未引入任何 Node API |
+
+> 版本递进说明：新增行为（联网搜索切换）会改变 `dsh.client` bundle，因此 `0.8.2 → 0.8.3` 仅作小版本递进，不引入运行时依赖、无构建产物。
+
 ## 0.8.2 更新（桌面版支持）
 
 DSH 桌面版（`@deepseek-ai/dsh-desktop-runtime` **0.2.0-rc.2**）启用了独立的 `desktop` profile，插件默认不在其中。本版本确认插件在桌面版下**无需改动代码**即可工作（纯浏览器侧 bundle，只依赖 `react` / `react/jsx-runtime`，不耦合 DSH 内部包）：
@@ -90,7 +105,7 @@ DSH 桌面版（`@deepseek-ai/dsh-desktop-runtime` **0.2.0-rc.2**）启用了独
 测试：
 
 ```powershell
-node test/client.test.cjs    # 10 项断言，无需安装依赖
+node test/client.test.cjs    # 13 项断言，无需安装依赖
 ```
 
 ## 卸载

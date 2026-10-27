@@ -120,6 +120,7 @@ pnpm --dir "$HOME\.dsh\profiles\web" remove dsh-client-ui-model-switcher
 欢迎提交 PR！请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 - 跑测试：`node test/client.test.cjs`（提交前必须全绿）
+- 跑 bundle 校验：`node test/bundle-check.cjs`（确认 `lib/client.js` 仍是纯浏览器、react-only、无 Node API 的 ModuleLoader bundle）
 - 提交信息遵循 [Conventional Commits](https://www.conventionalcommits.org/)
 
 ## 参考

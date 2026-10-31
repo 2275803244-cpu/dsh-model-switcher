@@ -1,7 +1,7 @@
 {
   "name": "dsh-client-ui-model-switcher",
-  "version": "0.8.3",
-  "description": "One-click provider/model switcher for the DeepSeek Harness web GUI: a session-header action that lists every configured provider and its models and switches the session in a single click.",
+  "version": "0.9.0",
+  "description": "One-click provider/model switcher for the DeepSeek Harness web GUI: a session-header action that lists every configured provider and its models, switches the session in a single click, and edits the model list in place (remove rows, or refetch the endpoint catalog as a checklist before writing).",
   "keywords": [
     "dsh",
     "deepseek-harness",
@@ -34,6 +34,9 @@
     "README.md",
     "LICENSE"
   ],
+  "scripts": {
+    "test": "node test/bundle-check.cjs && node test/client.test.cjs"
+  },
   "dsh": {
     "client": {
       "platform": "web"

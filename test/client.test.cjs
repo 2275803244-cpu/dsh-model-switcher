@@ -666,6 +666,197 @@ async function main() {
     assert.match(textOf(donePanel), /已写入全局配置/, 'success message after write');
   }));
 
+  tests.push(test('removing a model writes the remaining rows as one set', async () => {
+    const shim = createReactShim();
+    const api = remoteStub();
+    // The stored table is what readProviderTable() sees. ollama declares no
+    // apiKeyEnv, so it survives the usability filter that hides keyless
+    // providers; the catalog row plus one extra id gives the removal a
+    // neighbour to keep.
+    api.settings.describe = () => Promise.resolve({ ok: true, value: { writable: true, hasDocument: true, namespaces: [
+      { ns: 'llm-pi-ai', value: { providers: {
+        ollama: { baseURL: 'http://localhost:11434/v1', models: [{ id: 'llama3.1:8b' }, { id: 'llama3.2:3b' }] }
+      } } }
+    ] } });
+    const state = sessionState({ provider: 'deepseek-official', model: 'deepseek-v4-pro' });
+    const slot = slotOf(shim, api, state, 'conversation.session.header.actions');
+    const element = shim.render(slot.Component, slot.options.inject('session-1'));
+    click(collect(element(), 'button')[0]);
+    await shim.settle();
+    let panel = panelOf(element);
+    const ollamaChip = collect(panel, 'button').find((b) => textOf(b).includes('Ollama Local'));
+    assert.ok(ollamaChip, 'ollama chip present');
+    click(ollamaChip);
+    await shim.settle();
+    panel = panelOf(element);
+    const delMode = collect(panel, 'button').find((b) => hasClass(b, '_ms_toolBtn') && /\u5220\u9664\u6a21\u578b/.test(textOf(b)));
+    assert.ok(delMode, 'delete-mode toggle present');
+    click(delMode);
+    await shim.settle();
+    panel = panelOf(element);
+    // The catalog shows one ollama row, so exactly one delete button.
+    const deleteButtons = collect(panel, 'button').filter((b) => hasClass(b, '_ms_rowDelete'));
+    assert.strictEqual(deleteButtons.length, 1, 'one delete button per visible row');
+    click(deleteButtons[0]);
+    await shim.settle();
+    const mutates = api.calls.filter((c) => c[0] === 'settings.mutate');
+    assert.strictEqual(mutates.length, 1, 'removal writes exactly once');
+    const write = mutates[0][1];
+    assert.strictEqual(write.ns, 'llm-pi-ai', 'removal targets llm-pi-ai');
+    assert.strictEqual(write.ops.length, 1, 'removal is a single op');
+    assert.strictEqual(write.ops[0].op, 'set', 'removal uses a whole-array set, never an index unset');
+    assert.deepStrictEqual([...write.ops[0].path], ['providers', 'ollama', 'models'], 'op names only the models array');
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(write.ops[0].value.map((m) => m.id))), ['llama3.2:3b'], 'the deleted row is gone, the rest are kept');
+  }));
+
+  tests.push(test('update opens a candidate checklist and writes nothing until confirmed', async () => {
+    const shim = createReactShim();
+    const api = remoteStub();
+    api.llm.discoverModels = (ns, req) => {
+      api.calls.push(['llm.discoverModels', ns, req]);
+      return Promise.resolve({ ok: true, value: [
+        { id: 'llama3.1:8b', name: 'Llama' },
+        { id: 'llama3.2:3b', name: 'Llama 3.2' }
+      ] });
+    };
+    api.settings.describe = () => Promise.resolve({ ok: true, value: { writable: true, hasDocument: true, namespaces: [
+      { ns: 'llm-pi-ai', value: { providers: {
+        ollama: { baseURL: 'http://localhost:11434/v1', models: [{ id: 'llama3.1:8b' }] }
+      } } }
+    ] } });
+    const state = sessionState({ provider: 'deepseek-official', model: 'deepseek-v4-pro' });
+    const slot = slotOf(shim, api, state, 'conversation.session.header.actions');
+    const element = shim.render(slot.Component, slot.options.inject('session-1'));
+    click(collect(element(), 'button')[0]);
+    await shim.settle();
+    let panel = panelOf(element);
+    const ollamaChip = collect(panel, 'button').find((b) => textOf(b).includes('Ollama Local'));
+    click(ollamaChip);
+    await shim.settle();
+    panel = panelOf(element);
+    const updateBtn = collect(panel, 'button').find((b) => /\u4e00\u952e\u66f4\u65b0/.test(textOf(b)));
+    assert.ok(updateBtn, 'update button present');
+    click(updateBtn);
+    await shim.settle();
+    // Stage one: discovery ran positionally, and NOTHING was written.
+    const disc = api.calls.filter((c) => c[0] === 'llm.discoverModels');
+    assert.strictEqual(disc.length, 1, 'discovery ran once');
+    assert.strictEqual(disc[0][1], 'llm-pi-ai', 'discovery names the settings namespace');
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(disc[0][2])), { provider: 'ollama' }, 'discovery asks for the provider route');
+    assert.strictEqual(api.calls.filter((c) => c[0] === 'settings.mutate').length, 0, 'no write before confirmation');
+    panel = panelOf(element);
+    const boxes = collect(panel, 'input').filter((i) => i.props.type === 'checkbox');
+    assert.strictEqual(boxes.length, 2, 'one checkbox per candidate');
+    assert.strictEqual(boxes[0].props.checked, false, 'already-present id starts unticked');
+    assert.strictEqual(boxes[1].props.checked, true, 'new id starts ticked');
+    // Keep the default selection (only the new id) and confirm.
+    panel = panelOf(element);
+    const confirm = collect(panel, 'button').find((b) => /\u786e\u8ba4\u52a0\u5165/.test(textOf(b)));
+    assert.ok(confirm, 'confirm button present');
+    assert.strictEqual(confirm.props.disabled, false, 'confirm enabled when something is ticked');
+    click(confirm);
+    await shim.settle();
+    const mutates = api.calls.filter((c) => c[0] === 'settings.mutate');
+    assert.strictEqual(mutates.length, 1, 'confirmation writes once');
+    const write = mutates[0][1];
+    assert.strictEqual(write.ops[0].op, 'set', 'uses a path-level set');
+    assert.deepStrictEqual([...write.ops[0].path], ['providers', 'ollama', 'models'], 'op names only the models array');
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(write.ops[0].value.map((m) => m.id))), ['llama3.1:8b', 'llama3.2:3b'], 'the new id is appended after the stored row');
+  }));
+
+  tests.push(test('a hand-typed id is appended even when discovery returns nothing', async () => {
+    const shim = createReactShim();
+    const api = remoteStub();
+    api.llm.discoverModels = () => Promise.resolve({ ok: false, error: { code: 'llm/refused', message: 'no catalog' } });
+    api.settings.describe = () => Promise.resolve({ ok: true, value: { writable: true, hasDocument: true, namespaces: [
+      { ns: 'llm-pi-ai', value: { providers: {
+        ollama: { baseURL: 'http://localhost:11434/v1', models: [{ id: 'llama3.1:8b' }] }
+      } } }
+    ] } });
+    const state = sessionState({ provider: 'deepseek-official', model: 'deepseek-v4-pro' });
+    const slot = slotOf(shim, api, state, 'conversation.session.header.actions');
+    const element = shim.render(slot.Component, slot.options.inject('session-1'));
+    click(collect(element(), 'button')[0]);
+    await shim.settle();
+    let panel = panelOf(element);
+    const ollamaChip = collect(panel, 'button').find((b) => textOf(b).includes('Ollama Local'));
+    click(ollamaChip);
+    await shim.settle();
+    panel = panelOf(element);
+    const updateBtn = collect(panel, 'button').find((b) => /\u4e00\u952e\u66f4\u65b0/.test(textOf(b)));
+    click(updateBtn);
+    await shim.settle();
+    panel = panelOf(element);
+    // A refused catalog must still leave the picker usable for hand-typed ids.
+    const textInputs = collect(panel, 'input').filter((i) => i.props.type === 'text');
+    assert.strictEqual(textInputs.length, 1, 'the hand-typed field survives a refused discovery');
+    textInputs[0].props.onChange({ target: { value: 'relay-alias' } });
+    await shim.settle();
+    panel = panelOf(element);
+    const addBtn = collect(panel, 'button').find((b) => /\u6dfb\u52a0/.test(textOf(b)));
+    assert.ok(addBtn, 'add button present');
+    click(addBtn);
+    await shim.settle();
+    panel = panelOf(element);
+    const confirm = collect(panel, 'button').find((b) => /\u786e\u8ba4\u52a0\u5165/.test(textOf(b)));
+    assert.ok(confirm, 'confirm present after typing an id');
+    click(confirm);
+    await shim.settle();
+    const mutates = api.calls.filter((c) => c[0] === 'settings.mutate');
+    assert.strictEqual(mutates.length, 1, 'writes once');
+    const write = mutates[0][1];
+    assert.deepStrictEqual([...write.ops[0].path], ['providers', 'ollama', 'models'], 'op names only the models array');
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(write.ops[0].value.map((m) => m.id))), ['llama3.1:8b', 'relay-alias'], 'the typed id is appended after the stored rows');
+  }));
+
+  tests.push(test('a positional-parameter Remote is called positionally, not by shape probing', async () => {
+    // The generated 0.2.x descriptors declare the wide arity. A named call
+    // against them would be silently accepted with the object read as the
+    // namespace, so this pins the dispatch: two-or-more declared parameters
+    // means positional, one means named.
+    const shim = createReactShim();
+    const api = remoteStub();
+    const seen = [];
+    api.settings.describe = () => Promise.resolve({ ok: true, value: { writable: true, hasDocument: true, namespaces: [
+      { ns: 'llm-pi-ai', value: { providers: {
+        ollama: { baseURL: 'http://localhost:11434/v1', models: [{ id: 'llama3.1:8b' }] }
+      } } }
+    ] } });
+    api.llm.discoverModels = (ns, req) => {
+      seen.push(['discover', ns, req]);
+      return Promise.resolve({ ok: true, value: [{ id: 'llama3.2:3b' }] });
+    };
+    api.settings.mutate = (ns, ops, rev) => {
+      seen.push(['mutate', ns, ops, rev]);
+      return Promise.resolve({ ok: true });
+    };
+    const state = sessionState({ provider: 'deepseek-official', model: 'deepseek-v4-pro' });
+    const slot = slotOf(shim, api, state, 'conversation.session.header.actions');
+    const element = shim.render(slot.Component, slot.options.inject('session-1'));
+    click(collect(element(), 'button')[0]);
+    await shim.settle();
+    let panel = panelOf(element);
+    click(collect(panel, 'button').find((b) => textOf(b).includes('Ollama Local')));
+    await shim.settle();
+    panel = panelOf(element);
+    click(collect(panel, 'button').find((b) => /\u4e00\u952e\u66f4\u65b0/.test(textOf(b))));
+    await shim.settle();
+    panel = panelOf(element);
+    click(collect(panel, 'button').find((b) => /\u786e\u8ba4\u52a0\u5165/.test(textOf(b))));
+    await shim.settle();
+    const discover = seen.find((c) => c[0] === 'discover');
+    assert.ok(discover, 'discovery reached the wide-arity callee');
+    assert.strictEqual(discover[1], 'llm-pi-ai', 'first positional argument is the namespace');
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(discover[2])), { provider: 'ollama' }, 'second positional argument is the request');
+    const mutate = seen.find((c) => c[0] === 'mutate');
+    assert.ok(mutate, 'write reached the wide-arity callee');
+    assert.strictEqual(mutate[1], 'llm-pi-ai', 'first positional argument is the namespace');
+    assert.strictEqual(Array.isArray(mutate[2]), true, 'second positional argument is the ops array');
+    assert.strictEqual(mutate[2][0].op, 'set', 'the op travelled intact');
+    assert.deepStrictEqual([...mutate[2][0].path], ['providers', 'ollama', 'models'], 'the path travelled intact');
+    assert.strictEqual(mutate[3], undefined, 'no expectedRevision is invented');
+  }));
+
   await Promise.all(tests);
   console.log(process.exitCode === 1 ? 'FAILED' : 'all assertions passed');
 }
